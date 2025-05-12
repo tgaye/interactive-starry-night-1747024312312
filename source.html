@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Starry Night</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: Arial, sans-serif;
+        }
+        #canvas-container {
+            width: 100%;
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: center;
+            position: relative;
+        }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.8.0/lib/p5.js"></script>
+
+<base target="_self">
+
+
+    <div id="canvas-container"></div>
+
+    <script>
+        const sketch = (p) => {
+            let stars = [];
+            let shootingStars = [];
+            let ripples = [];
+            const maxStars = 800;
+            const maxShootingStars = 3;
+            const starColors = ['#ffffff', '#f0f0ff', '#e0e0ff', '#d0d0ff'];
+            let bgGradient;
+            let lastShootingStarTime = 0;
+            let shootingStarInterval = 3000;
+            let audioContext, gainNode;
+            let isAudioEnabled = false;
+
+            p.setup = () => {
+                let canvas = p.createCanvas(p.windowWidth, p.windowHeight);
+                canvas.parent('canvas-container');
+                p.colorMode(p.HSB, 360, 100, 100, 1);
+                
+                // Initialize stars
+                for (let i = 0; i < maxStars; i++) {
+                    stars.push({
+                        x: p.random(p.width),
+                        y: p.random(p.height),
+                        size: p.random(0.5, 3),
+                        brightness: p.random(0.7, 1),
+                        twinkleSpeed: p.random(0.01, 0.05),
+                        twinkleOffset: p.random(p.TWO_PI),
+                        color: p.color(starColors[p.floor(p.random(starColors.length))])
+                    });
+                }
+
+                // Create background gradient
+                createBgGradient();
+
+                // Try to initialize audio
+                try {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                    gainNode = audioContext.createGain();
+                    gainNode.gain.value = 0;
+                    gainNode.connect(audioContext.destination);
+                    isAudioEnabled = true;
+                } catch (e) {
+                    console.log("Audio not supported");
+                    isAudioEnabled = false;
+                }
+            };
+
+            function createBgGradient() {
+                bgGradient = p.createGraphics(p.width, p.height);
+                for (let y = 0; y < p.height; y++) {
+                    let inter = p.map(y, 0, p.height, 0, 1);
+                    let c = p.lerpColor(p.color(10, 80, 20), p.color(0, 0, 0), inter);
+                    bgGradient.stroke(c);
+                    bgGradient.line(0, y, p.width, y);
+                }
+            }
+
+            p.draw = () => {
+                // Draw background
+                p.image(bgGradient, 0, 0, p.width, p.height);
+
+                // Update and draw stars
+                drawStars();
+
+                // Update and draw shooting stars
+                updateShootingStars();
+
+                // Update and draw ripples
+                updateRipples();
+
+                // Occasionally spawn a shooting star
+                if (p.millis() - lastShootingStarTime > shootingStarInterval && shootingStars.length < maxShootingStars) {
+                    spawnShootingStar();
+                    lastShootingStarTime = p.millis();
+                    shootingStarInterval = p.random(2000, 6000);
+                }
+            };
+
+            function drawStars() {
+                p.noStroke();
+                for (let star of stars) {
+                    // Twinkle effect
+                    let twinkle = p.sin(p.frameCount * star.twinkleSpeed + star.twinkleOffset) * 0.2 + 0.8;
+                    let currentBrightness = star.brightness * twinkle;
+                    
+                    let c = p.color(star.color);
+                    c.setAlpha(currentBrightness);
+                    p.fill(c);
+                    p.circle(star.x, star.y, star.size);
+                }
+            }
+
+            function spawnShootingStar() {
+                let fromEdge = p.random(100);
+                let startX, startY, endX, endY;
+                
+                if (p.random() > 0.5) {
+                    // Horizontal shooting star
+                    startX = p.random(-fromEdge, p.width + fromEdge);
+                    startY = p.random() > 0.5 ? -fromEdge : p.height + fromEdge;
+                    endX = startX + p.random(-100, 100);
+                    endY = startY > p.height/2 ? -fromEdge : p.height + fromEdge;
+                } else {
+                    // Vertical shooting star
+                    startX = p.random() > 0.5 ? -fromEdge : p.width + fromEdge;
+                    startY = p.random(-fromEdge, p.height + fromEdge);
+                    endX = startX > p.width/2 ? -fromEdge : p.width + fromEdge;
+                    endY = startY + p.random(-100, 100);
+                }
+                
+                shootingStars.push({
+                    x: startX,
+                    y: startY,
+                    endX: endX,
+                    endY: endY,
+                    speed: p.random(5, 15),
+                    progress: 0,
+                    size: p.random(2, 4),
+                    trailLength: p.random(10, 20),
+                    color: p.color(p.random(180, 240), 50, 100, 0.8)
+                });
+                
+                if (isAudioEnabled) {
+                    playShootingStarSound();
+                }
+            }
+
+            function playShootingStarSound() {
+                if (!isAudioEnabled) return;
+                
+                let oscillator = audioContext.createOscillator();
+                let gain = audioContext.createGain();
+                
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(2000, audioContext.currentTime);
+                oscillator.frequency.exponentialRampToValueAtTime(100, audioContext.currentTime + 0.5);
+                
+                gain.gain.setValueAtTime(0.1, audioContext.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.5);
+                
+                oscillator.connect(gain);
+                gain.connect(audioContext.destination);
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.5);
+            }
+
+            function updateShootingStars() {
+                for (let i = shootingStars.length - 1; i >= 0; i--) {
+                    let star = shootingStars[i];
+                    star.progress += star.speed / p.dist(star.x, star.y, star.endX, star.endY);
+                    
+                    if (star.progress >= 1) {
+                        shootingStars.splice(i, 1);
+                        continue;
+                    }
+                    
+                    let currentX = p.lerp(star.x, star.endX, star.progress);
+                    let currentY = p.lerp(star.y, star.endY, star.progress);
+                    
+                    // Draw trail
+                    for (let j = 0; j < star.trailLength; j++) {
+                        let trailProgress = star.progress - (j / star.trailLength) * 0.1;
+                        if (trailProgress < 0) continue;
+                        
+                        let trailX = p.lerp(star.x, star.endX, trailProgress);
+                        let trailY = p.lerp(star.y, star.endY, trailProgress);
+                        
+                        let alpha = p.map(j, 0, star.trailLength, 0.8, 0);
+                        let c = p.color(star.color);
+                        c.setAlpha(alpha);
+                        p.fill(c);
+                        p.circle(trailX, trailY, star.size * p.map(j, 0, star.trailLength, 1, 0.2));
+                    }
+                    
+                    // Draw head
+                    p.fill(star.color);
+                    p.circle(currentX, currentY, star.size * 1.5);
+                }
+            }
+
+            p.mouseMoved = () => {
+                // Create ripple when mouse moves
+                if (p.dist(p.pmouseX, p.pmouseY, p.mouseX, p.mouseY) > 5) {
+                    ripples.push({
+                        x: p.mouseX,
+                        y: p.mouseY,
+                        radius: 0,
+                        maxRadius: p.random(50, 150),
+                        speed: p.random(1, 3),
+                        alpha: 0.8,
+                        fadeSpeed: p.random(0.01, 0.03),
+                        color: p.color(200, 50, 100, 0.8)
+                    });
+                }
+            };
+
+            function updateRipples() {
+                for (let i = ripples.length - 1; i >= 0; i--) {
+                    let ripple = ripples[i];
+                    ripple.radius += ripple.speed;
+                    ripple.alpha -= ripple.fadeSpeed;
+                    
+                    if (ripple.alpha <= 0 || ripple.radius > ripple.maxRadius) {
+                        ripples.splice(i, 1);
+                        continue;
+                    }
+                    
+                    p.noFill();
+                    let c = p.color(ripple.color);
+                    c.setAlpha(ripple.alpha);
+                    p.stroke(c);
+                    p.strokeWeight(1);
+                    p.circle(ripple.x, ripple.y, ripple.radius * 2);
+                    
+                    // Create temporary constellations in ripple patterns
+                    if (p.random() < 0.02 && ripple.radius > 20 && ripple.radius < ripple.maxRadius * 0.8) {
+                        createConstellation(ripple.x, ripple.y, ripple.radius);
+                    }
+                }
+            }
+
+            function createConstellation(x, y, radius) {
+                let points = p.floor(p.random(3, 6));
+                let constellation = [];
+                
+                for (let i = 0; i < points; i++) {
+                    constellation.push({
+                        x: x + p.random(-radius, radius),
+                        y: y + p.random(-radius, radius),
+                        size: p.random(2, 4)
+                    });
+                }
+                
+                // Draw lines between points
+                p.stroke(255, 0.3);
+                p.strokeWeight(0.5);
+                for (let i = 0; i < constellation.length - 1; i++) {
+                    p.line(constellation[i].x, constellation[i].y, constellation[i+1].x, constellation[i+1].y);
+                }
+                
+                // Draw points
+                p.noStroke();
+                p.fill(255, 0.8);
+                for (let point of constellation) {
+                    p.circle(point.x, point.y, point.size);
+                }
+            }
+
+            p.windowResized = () => {
+                p.resizeCanvas(p.windowWidth, p.windowHeight);
+                createBgGradient();
+                
+                // Reposition stars proportionally
+                for (let star of stars) {
+                    star.x = p.map(star.x, 0, p.width, 0, p.width);
+                    star.y = p.map(star.y, 0, p.height, 0, p.height);
+                }
+            };
+
+            p.touchMoved = () => {
+                p.mouseMoved();
+                return false;
+            };
+        };
+
+        new p5(sketch);
+    </script>
+
+              
+          
+                
+          
+              
